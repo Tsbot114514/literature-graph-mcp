@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "literature-graph-mcp"
+version = "0.1.0"
+description = "A minimal Paper-Centric Neo4j MCP server"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+keywords = ["mcp", "neo4j", "literature", "knowledge-graph", "research-agent"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "mcp>=1.20,<2",
+  "neo4j>=5.28,<7",
+]
+
+[project.scripts]
+literature-graph-mcp = "literature_graph_mcp.server:main"
+
+[project.urls]
+Repository = "https://github.com/Tsbot114514/literature-graph-mcp"
+Issues = "https://github.com/Tsbot114514/literature-graph-mcp/issues"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/literature_graph_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

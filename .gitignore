@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+.pytest_cache/
+dist/
+*.egg-info/
+.env
+opencode.mcp.generated.json
+neo4j/
+papers/
+*.pdf
+*.docx
+
+# Local research material is not part of the MCP distribution.
+assets/
+chapter-*
+reviews/
+scripts/
+心理学与生活/
+知识图谱MCP-PPT内容稿.md
+初稿-*
