@@ -2,7 +2,7 @@ name: literature-graph
 
 services:
   neo4j:
-    image: neo4j:5.28-community
+    image: neo4j:5.26-community
     container_name: literature-graph-neo4j
     restart: unless-stopped
     ports:
@@ -10,14 +10,14 @@ services:
       - "${NEO4J_BOLT_PORT:-7687}:7687"
     environment:
       NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD in .env}"
-      NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
+      LG_PASSWORD: "${NEO4J_PASSWORD}"
     volumes:
       - literature-graph-neo4j-data:/data
       - literature-graph-neo4j-logs:/logs
     healthcheck:
       test:
         - CMD-SHELL
-        - cypher-shell -u neo4j -p "$${NEO4J_PASSWORD}" "RETURN 1" || exit 1
+        - cypher-shell -u neo4j -p "$${LG_PASSWORD}" "RETURN 1" || exit 1
       interval: 5s
       timeout: 5s
       retries: 30
