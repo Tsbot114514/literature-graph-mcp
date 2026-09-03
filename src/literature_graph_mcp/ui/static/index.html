@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Literature Graph UI</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+      color: #222;
+      overflow: hidden;
+    }
+    #sidebar {
+      width: 280px;
+      min-width: 280px;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      background: #fafafa;
+    }
+    #sidebar header { padding: 14px 16px 10px; border-bottom: 1px solid #e0e0e0; }
+    #sidebar h1 { font-size: 15px; margin: 0 0 10px; }
+    #search-form { display: flex; gap: 6px; }
+    #search-input {
+      flex: 1;
+      padding: 7px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 13px;
+      min-width: 0;
+    }
+    #search-button {
+      padding: 7px 12px;
+      border: none;
+      border-radius: 6px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #results { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 8px; }
+    #results li {
+      padding: 7px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 4px;
+    }
+    #results li:hover { background: #eef2ff; }
+    .result-title { font-weight: 500; font-size: 12px; }
+    .result-meta { font-size: 11px; color: #666; margin-top: 2px; }
+    .badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 9px;
+      font-size: 10px;
+      color: #fff;
+      margin-left: 4px;
+    }
+    #empty-hint { color: #999; font-size: 12px; padding: 12px 16px; }
+    #main { flex: 1; position: relative; }
+    #cy { width: 100%; height: 100%; }
+    #legend {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 11px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+    #legend .row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+    #legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    #legend .title { font-weight: 600; margin-bottom: 6px; }
+    #detail {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 320px;
+      background: #fff;
+      border-left: 1px solid #e0e0e0;
+      box-shadow: -4px 0 12px rgba(0, 0, 0, 0.08);
+      overflow-y: auto;
+      padding: 16px;
+      display: none;
+    }
+    #detail.open { display: block; }
+    #detail { scrollbar-width: thin; scrollbar-color: #aaa #f0f0f0; }
+    #detail::-webkit-scrollbar { width: 10px; }
+    #detail::-webkit-scrollbar-track { background: #f0f0f0; }
+    #detail::-webkit-scrollbar-thumb { background: #aaa; border-radius: 5px; }
+    #detail::-webkit-scrollbar-thumb:hover { background: #888; }
+    #detail h2 { font-size: 15px; margin: 0 0 4px; line-height: 1.4; word-break: break-word; }
+    #detail .type-line { font-size: 11px; color: #888; margin-bottom: 12px; }
+    #detail .prop { margin-bottom: 10px; }
+    #detail .prop-key { font-size: 10px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
+    #detail .prop-val { font-size: 12px; white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 6px 8px; border-radius: 4px; margin-top: 2px; }
+    #detail .prop-val.long { font-size: 13px; line-height: 1.6; }
+    #detail .prop-val a { color: #2563eb; word-break: break-all; }
+    #detail-actions { margin-top: 14px; display: flex; gap: 8px; }
+    #detail button {
+      padding: 7px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #detail button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    #tooltip {
+      position: absolute;
+      max-width: 280px;
+      padding: 6px 9px;
+      background: rgba(20, 20, 20, 0.85);
+      color: #fff;
+      font-size: 12px;
+      border-radius: 5px;
+      pointer-events: none;
+      display: none;
+      z-index: 20;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <aside id="sidebar">
+    <header>
+      <h1>Literature Graph</h1>
+      <form id="search-form">
+        <input id="search-input" placeholder="Search papers, authors, topics..." autocomplete="off" />
+        <button id="search-button" type="submit">Search</button>
+      </form>
+    </header>
+    <div id="empty-hint">Loading recent network... Drag to pan, scroll to zoom.</div>
+    <ul id="results"></ul>
+  </aside>
+
+  <div id="main">
+    <div id="cy"></div>
+    <div id="legend"></div>
+    <div id="detail"></div>
+    <div id="tooltip"></div>
+  </div>
+
+  <script src="/static/cytoscape.min.js"></script>
+  <script>
+    const TYPE_COLORS = {
+      Paper: "#4C78A8",
+      Author: "#59A14F",
+      Topic: "#F28E2B",
+      Institution: "#E15759",
+      Method: "#76B7B2",
+      Concept: "#B07AA1",
+      Claim: "#FF9DA7",
+    };
+
+    const cy = cytoscape({
+      container: document.getElementById("cy"),
+      nodeDimensionsIncludeLabels: true,
+      style: [
+        {
+          selector: "node",
+          style: {
+            label: "data(label)",
+            "background-color": "data(color)",
+            "text-valign": "bottom",
+            "text-halign": "center",
+            "font-size": 11,
+            width: 42,
+            height: 42,
+            color: "#222",
+            "text-wrap": "wrap",
+            "text-max-width": "130px",
+            "text-margin-y": 6,
+            "border-width": 3,
+            "border-color": "#fff",
+          },
+        },
+        {
+          selector: "edge",
+          style: {
+            label: "data(label)",
+            width: 1.6,
+            "line-color": "#c2c2c2",
+            "target-arrow-shape": "triangle",
+            "target-arrow-color": "#c2c2c2",
+            "curve-style": "bezier",
+            "font-size": 7,
+            "text-rotation": "autorotate",
+            "text-margin-x": 4,
+            "text-margin-y": -4,
+            "text-background-color": "#ffffff",
+            "text-background-opacity": 0.85,
+            "text-background-padding": "3px",
+            "color": "#666",
+          },
+        },
+      ],
+    });
+
+    const layoutOptions = {
+      name: "cose",
+      animate: true,
+      fit: true,
+      padding: 90,
+      idealEdgeLength: 200,
+      nodeRepulsion: 20000,
+      nodeOverlap: 40,
+      gravity: 0.1,
+      numIter: 3000,
+      randomize: true,
+    };
+
+    function typeOf(node) {
+      return (node.labels || []).find((l) => l !== "Entity") || "Entity";
+    }
+    function colorOf(type) {
+      return TYPE_COLORS[type] || "#999999";
+    }
+    function labelOf(props, fallbackId) {
+      return props.display_label || props.title || props.name || fallbackId || "";
+    }
+    function fullLabelOf(props, fallbackId) {
+      return props.title || props.name || props.display_label || fallbackId || "";
+    }
+
+    function nodeElement(labels, props) {
+      const id = props.id;
+      return {
+        data: {
+          id: id,
+          label: labelOf(props, id),
+          fullLabel: fullLabelOf(props, id),
+          color: colorOf(typeOf({ labels: labels })),
+          type: typeOf({ labels: labels }),
+        },
+      };
+    }
+
+    function edgeElement(source, target, relType) {
+      return {
+        data: {
+          id: relType + ":" + source + "->" + target,
+          source: source,
+          target: target,
+          label: relType,
+        },
+      };
+    }
+
+    function setGraph(data) {
+      const elements = [];
+      const seenNodes = new Set();
+      for (const node of data.nodes || []) {
+        elements.push(nodeElement(node.labels, node.properties));
+        seenNodes.add(node.properties.id);
+      }
+      for (const edge of data.edges || []) {
+        if (edge.source && edge.target && seenNodes.has(edge.source) && seenNodes.has(edge.target)) {
+          elements.push(edgeElement(edge.source, edge.target, edge.type));
+        }
+      }
+      cy.elements().remove();
+      cy.add(elements);
+      runLayout();
+    }
+
+    function loadNeighborhood(id, replace) {
+      fetch("/api/node/" + encodeURIComponent(id) + "/neighborhood")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.error) {
+            alert(data.error);
+            return;
+          }
+          if (replace) {
+            cy.elements().remove();
+            cy.add(nodeElement(data.node.labels, data.node.properties));
+          }
+          for (const rel of data.relationships) {
+            const neighborId = rel.node_properties.id;
+            if (cy.getElementById(neighborId).length === 0) {
+              cy.add(nodeElement(rel.node_labels, rel.node_properties));
+            }
+            const source = rel.direction === "outgoing" ? data.node.properties.id : neighborId;
+            const target = rel.direction === "outgoing" ? neighborId : data.node.properties.id;
+            const edgeId = rel.type + ":" + source + "->" + target;
+            if (cy.getElementById(edgeId).length === 0) {
+              cy.add(edgeElement(source, target, rel.type));
+            }
+          }
+          runLayout();
+        });
+    }
+
+    function runLayout() {
+      cy.layout(layoutOptions).run();
+    }
+
+    function renderResults(items) {
+      const list = document.getElementById("results");
+      list.innerHTML = "";
+      const hint = document.getElementById("empty-hint");
+      hint.style.display = "none";
+      if (!items.length) {
+        hint.style.display = "block";
+        hint.textContent = "No results.";
+        return;
+      }
+      for (const item of items) {
+        const props = item.properties || {};
+        const id = props.id || "";
+        const type = typeOf(item);
+        const title = labelOf(props, id);
+        const meta = props.year ? String(props.year) : "";
+        const li = document.createElement("li");
+        const titleEl = document.createElement("div");
+        titleEl.className = "result-title";
+        titleEl.textContent = title;
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = type;
+        badge.style.background = colorOf(type);
+        titleEl.appendChild(badge);
+        const metaEl = document.createElement("div");
+        metaEl.className = "result-meta";
+        metaEl.textContent = meta + (meta ? " · " : "") + id;
+        li.appendChild(titleEl);
+        li.appendChild(metaEl);
+        li.addEventListener("click", () => loadNeighborhood(id, true));
+        list.appendChild(li);
+      }
+    }
+
+    function renderProp(key, value) {
+      if (key === "source_url" || key === "url") {
+        const url = String(value);
+        return '<div class="prop"><div class="prop-key">' + escapeHtml(key) + "</div>" +
+          '<div class="prop-val"><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(url) + "</a></div></div>";
+      }
+      if (Array.isArray(value)) {
+        value = value.join(", ");
+      } else if (typeof value === "object") {
+        value = JSON.stringify(value);
+      }
+      const long = key === "abstract" || key === "note" || key === "chunk";
+      return '<div class="prop"><div class="prop-key">' + escapeHtml(key) + "</div>" +
+        '<div class="prop-val' + (long ? " long" : "") + '">' + escapeHtml(String(value)) + "</div></div>";
+    }
+
+    function showDetail(node) {
+      const panel = document.getElementById("detail");
+      panel.classList.add("open");
+      const type = typeOf(node);
+      const props = node.properties || {};
+      const id = props.id || "";
+
+      const title = props.title || props.name || "";
+      const meta = [];
+      if (props.year) meta.push(String(props.year));
+      if (props.venue) meta.push(props.venue);
+
+      let html = "<h2>" + escapeHtml(title) + "</h2>";
+      html += '<div class="type-line">';
+      html += '<span class="badge" style="background:' + colorOf(type) + '">' + escapeHtml(type) + "</span>";
+      if (meta.length) html += ' <span style="margin-left:6px;">' + escapeHtml(meta.join(" · ")) + "</span>";
+      html += "</div>";
+      html += '<div class="type-line" style="color:#aaa;margin-top:-8px;">' + escapeHtml(id) + "</div>";
+
+      const ordered = [
+        "doi", "arxiv_id", "openalex_id",
+        "abstract", "note", "chunk",
+        "source_url", "absolute_local_path",
+        "publication_status", "publication_date", "publication_date_precision",
+        "first_public_draft_date", "first_public_draft_source",
+        "latest_revision_date", "latest_revision_version",
+        "research_period_start", "research_period_end", "research_period_status", "research_period_note",
+        "timeline_verified_at", "timeline_sources",
+        "citation_style", "citation_in_text_parenthetical", "citation_in_text_narrative",
+        "citation_reference", "citation_verified_at", "citation_sources",
+      ];
+      const shown = new Set(["id", "title", "name", "year", "venue", "display_label"]);
+
+      for (const key of ordered) {
+        if (props[key] === null || props[key] === undefined) continue;
+        html += renderProp(key, props[key]);
+        shown.add(key);
+      }
+      for (const key of Object.keys(props)) {
+        if (shown.has(key) || props[key] === null || props[key] === undefined) continue;
+        html += renderProp(key, props[key]);
+      }
+
+      html += '<div id="detail-actions">';
+      html += '<button class="primary" id="expand-btn">Expand neighbors</button>';
+      html += '<button id="close-btn">Close</button>';
+      html += "</div>";
+
+      panel.innerHTML = html;
+      document.getElementById("expand-btn").addEventListener("click", () => loadNeighborhood(props.id, false));
+      document.getElementById("close-btn").addEventListener("click", () => panel.classList.remove("open"));
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function buildLegend() {
+      const legend = document.getElementById("legend");
+      let html = '<div class="title">Node types</div>';
+      for (const [type, color] of Object.entries(TYPE_COLORS)) {
+        html += '<div class="row"><span class="dot" style="background:' + color + '"></span>' + type + "</div>";
+      }
+      legend.innerHTML = html;
+    }
+
+    document.getElementById("search-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const query = document.getElementById("search-input").value.trim();
+      if (!query) return;
+      document.getElementById("empty-hint").style.display = "none";
+      fetch("/api/search?query=" + encodeURIComponent(query))
+        .then((r) => r.json())
+        .then((data) => renderResults(data.results || []));
+    });
+
+    cy.on("tap", "node", (evt) => {
+      const id = evt.target.id();
+      fetch("/api/node/" + encodeURIComponent(id))
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.error) {
+            alert(data.error);
+            return;
+          }
+          showDetail(data);
+        });
+    });
+
+    cy.on("tap", (evt) => {
+      if (evt.target === cy) {
+        document.getElementById("detail").classList.remove("open");
+      }
+    });
+
+    cy.on("mouseover", "node", (evt) => {
+      const tip = document.getElementById("tooltip");
+      tip.textContent = evt.target.data("fullLabel") || evt.target.id();
+      tip.style.display = "block";
+      const pos = evt.target.renderedPosition();
+      tip.style.left = pos.x + 14 + "px";
+      tip.style.top = pos.y + 14 + "px";
+    });
+
+    cy.on("mouseout", "node", () => {
+      document.getElementById("tooltip").style.display = "none";
+    });
+
+    buildLegend();
+
+    fetch("/api/graph")
+      .then((r) => r.json())
+      .then((data) => {
+        document.getElementById("empty-hint").style.display = "none";
+        setGraph(data);
+      })
+      .catch(() => {
+        document.getElementById("empty-hint").textContent = "Failed to load recent network.";
+      });
+  </script>
+</body>
+</html>
