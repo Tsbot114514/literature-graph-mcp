@@ -174,7 +174,10 @@ def test_static_index_is_available(tmp_path: Path) -> None:
     assert 'selector: "node.labeled, node:selected, node.hovered"' in response.text
     assert 'selector: "edge:selected"' in response.text
     assert "function applyTypeFocus()" in response.text
-    assert "Click again to show all" in response.text
+    assert "Select multiple types" in response.text
+    assert 'const LABEL_MODES = ["auto", "selected", "off"]' in response.text
+    assert "nodeDimensionsIncludeLabels: false" in response.text
+    assert "function compactLabelOf" in response.text
 
 
 def test_ui_mode_does_not_run_schema_writes(monkeypatch, tmp_path: Path) -> None:

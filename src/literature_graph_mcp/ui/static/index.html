@@ -90,6 +90,25 @@
     #legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     #legend .title { font-weight: 600; margin-bottom: 6px; }
     #legend .hint { color: #888; font-size: 10px; margin-top: 6px; }
+    #legend .label-control {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 7px;
+      padding-top: 7px;
+      border-top: 1px solid #e5e7eb;
+    }
+    #label-mode {
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: #fff;
+      color: #334155;
+      padding: 3px 7px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+    #label-mode:hover { background: #f1f5f9; }
     #detail {
       position: absolute;
       top: 0;
@@ -172,11 +191,17 @@
       Concept: "#B07AA1",
       Claim: "#FF9DA7",
     };
-    let focusedType = new URLSearchParams(window.location.search).get("focus");
+    const queryParams = new URLSearchParams(window.location.search);
+    const selectedTypes = new Set(
+      (queryParams.get("focus") || "").split(",").filter(Boolean)
+    );
+    const LABEL_MODES = ["auto", "selected", "off"];
+    let labelMode = queryParams.get("labels") || "auto";
+    if (!LABEL_MODES.includes(labelMode)) labelMode = "auto";
 
     const cy = cytoscape({
       container: document.getElementById("cy"),
-      nodeDimensionsIncludeLabels: true,
+      nodeDimensionsIncludeLabels: false,
       style: [
         {
           selector: "node",
@@ -303,13 +328,17 @@
     function fullLabelOf(props, fallbackId) {
       return props.title || props.name || props.display_label || fallbackId || "";
     }
+    function compactLabelOf(props, fallbackId) {
+      const label = labelOf(props, fallbackId);
+      return label.length > 56 ? label.slice(0, 53) + "..." : label;
+    }
 
     function nodeElement(labels, props) {
       const id = props.id;
       return {
         data: {
           id: id,
-          label: labelOf(props, id),
+          label: compactLabelOf(props, id),
           fullLabel: fullLabelOf(props, id),
           color: colorOf(typeOf({ labels: labels })),
           type: typeOf({ labels: labels }),
@@ -342,8 +371,8 @@
       }
       cy.elements().remove();
       cy.add(elements);
-      updateLabelVisibility();
       buildLegend();
+      updateLabelVisibility();
       applyTypeFocus();
       runLayout();
     }
@@ -357,7 +386,7 @@
             return;
           }
           if (replace) {
-            focusedType = null;
+            selectedTypes.clear();
             cy.elements().remove();
             cy.add(nodeElement(data.node.labels, data.node.properties));
           }
@@ -373,8 +402,8 @@
               cy.add(edgeElement(source, target, rel.type));
             }
           }
-          updateLabelVisibility();
           buildLegend();
+          updateLabelVisibility();
           applyTypeFocus();
           runLayout();
         });
@@ -383,6 +412,13 @@
     function updateLabelVisibility() {
       const nodes = cy.nodes();
       nodes.removeClass("labeled");
+      if (labelMode === "off") return;
+      if (labelMode === "selected") {
+        nodes
+          .filter((node) => selectedTypes.has(node.data("type")))
+          .addClass("labeled");
+        return;
+      }
       if (nodes.length <= 25) {
         nodes.addClass("labeled");
         return;
@@ -512,36 +548,51 @@
     function buildLegend() {
       const legend = document.getElementById("legend");
       const presentTypes = [...new Set(cy.nodes().map((node) => node.data("type")))].sort();
-      if (focusedType && !presentTypes.includes(focusedType)) focusedType = null;
-      legend.classList.toggle("focused", Boolean(focusedType));
-      let html = '<div class="title">Focus node type</div>';
+      for (const type of [...selectedTypes]) {
+        if (!presentTypes.includes(type)) selectedTypes.delete(type);
+      }
+      legend.classList.toggle("focused", selectedTypes.size > 0);
+      let html = '<div class="title">Filter node types</div>';
       for (const type of presentTypes) {
         const color = colorOf(type);
-        const active = focusedType === type ? " active" : "";
+        const active = selectedTypes.has(type) ? " active" : "";
         html += '<div class="row' + active + '" data-type="' + type + '">' +
           '<span class="dot" style="background:' + color + '"></span>' + type + "</div>";
       }
-      html += '<div class="hint">Click again to show all</div>';
+      const modeLabel = labelMode[0].toUpperCase() + labelMode.slice(1);
+      html += '<div class="label-control"><span>Node labels</span>' +
+        '<button id="label-mode" type="button">' + modeLabel + "</button></div>";
+      html += '<div class="hint">Select multiple types · click again to remove</div>';
       legend.innerHTML = html;
       for (const row of legend.querySelectorAll(".row")) {
         row.addEventListener("click", () => {
           const type = row.dataset.type;
-          focusedType = focusedType === type ? null : type;
+          if (selectedTypes.has(type)) selectedTypes.delete(type);
+          else selectedTypes.add(type);
+          updateLabelVisibility();
           applyTypeFocus();
           buildLegend();
         });
       }
+      document.getElementById("label-mode").addEventListener("click", () => {
+        labelMode = LABEL_MODES[(LABEL_MODES.indexOf(labelMode) + 1) % LABEL_MODES.length];
+        updateLabelVisibility();
+        buildLegend();
+      });
     }
 
     function applyTypeFocus() {
+      const hasFocus = selectedTypes.size > 0;
       for (const node of cy.nodes()) {
-        const dim = Boolean(focusedType) && node.data("type") !== focusedType;
+        const dim = hasFocus && !selectedTypes.has(node.data("type"));
         node[dim ? "addClass" : "removeClass"]("dimmed");
       }
       for (const edge of cy.edges()) {
-        const connected = Boolean(focusedType) &&
-          (edge.source().data("type") === focusedType || edge.target().data("type") === focusedType);
-        edge[focusedType && !connected ? "addClass" : "removeClass"]("dimmed");
+        const connected = hasFocus && (
+          selectedTypes.has(edge.source().data("type")) ||
+          selectedTypes.has(edge.target().data("type"))
+        );
+        edge[hasFocus && !connected ? "addClass" : "removeClass"]("dimmed");
         edge[connected ? "addClass" : "removeClass"]("focused");
       }
     }
