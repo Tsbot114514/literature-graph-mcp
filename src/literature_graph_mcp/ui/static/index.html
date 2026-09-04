@@ -88,27 +88,25 @@
     #legend .row.active { background: #e8eefc; font-weight: 700; }
     #legend.focused .row:not(.active) { opacity: 0.42; }
     #legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    #legend .type-name { flex: 1; }
     #legend .title { font-weight: 600; margin-bottom: 6px; }
     #legend .hint { color: #888; font-size: 10px; margin-top: 6px; }
-    #legend .label-control {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-top: 7px;
-      padding-top: 7px;
-      border-top: 1px solid #e5e7eb;
-    }
-    #label-mode {
+    #legend .label-toggle {
       border: 1px solid #cbd5e1;
       border-radius: 5px;
       background: #fff;
-      color: #334155;
-      padding: 3px 7px;
-      font-size: 10px;
+      color: #64748b;
+      padding: 1px 5px;
+      font-size: 9px;
       cursor: pointer;
     }
-    #label-mode:hover { background: #f1f5f9; }
+    #legend .label-toggle:hover { background: #f8fafc; }
+    #legend .label-toggle.active {
+      color: #1d4ed8;
+      border-color: #93c5fd;
+      background: #dbeafe;
+      font-weight: 700;
+    }
     #detail {
       position: absolute;
       top: 0;
@@ -195,9 +193,9 @@
     const selectedTypes = new Set(
       (queryParams.get("focus") || "").split(",").filter(Boolean)
     );
-    const LABEL_MODES = ["auto", "selected", "off"];
-    let labelMode = queryParams.get("labels") || "auto";
-    if (!LABEL_MODES.includes(labelMode)) labelMode = "auto";
+    const labeledTypes = new Set(
+      (queryParams.get("labels") || "").split(",").filter(Boolean)
+    );
 
     const cy = cytoscape({
       container: document.getElementById("cy"),
@@ -304,8 +302,9 @@
 
     const layoutOptions = {
       name: "cose",
-      animate: true,
+      animate: false,
       fit: true,
+      nodeDimensionsIncludeLabels: false,
       padding: 70,
       idealEdgeLength: 150,
       nodeRepulsion: 80000,
@@ -412,21 +411,9 @@
     function updateLabelVisibility() {
       const nodes = cy.nodes();
       nodes.removeClass("labeled");
-      if (labelMode === "off") return;
-      if (labelMode === "selected") {
-        nodes
-          .filter((node) => selectedTypes.has(node.data("type")))
-          .addClass("labeled");
-        return;
-      }
-      if (nodes.length <= 25) {
-        nodes.addClass("labeled");
-        return;
-      }
-      const candidates = nodes.filter((node) =>
-        ["Topic", "Claim", "Concept"].includes(node.data("type")) && node.degree() <= 2
-      );
-      candidates.slice(0, 12).addClass("labeled");
+      nodes
+        .filter((node) => labeledTypes.has(node.data("type")))
+        .addClass("labeled");
     }
 
     function runLayout() {
@@ -551,18 +538,23 @@
       for (const type of [...selectedTypes]) {
         if (!presentTypes.includes(type)) selectedTypes.delete(type);
       }
+      for (const type of [...labeledTypes]) {
+        if (!presentTypes.includes(type)) labeledTypes.delete(type);
+      }
       legend.classList.toggle("focused", selectedTypes.size > 0);
       let html = '<div class="title">Filter node types</div>';
       for (const type of presentTypes) {
         const color = colorOf(type);
         const active = selectedTypes.has(type) ? " active" : "";
+        const labelsActive = labeledTypes.has(type) ? " active" : "";
         html += '<div class="row' + active + '" data-type="' + type + '">' +
-          '<span class="dot" style="background:' + color + '"></span>' + type + "</div>";
+          '<span class="dot" style="background:' + color + '"></span>' +
+          '<span class="type-name">' + type + "</span>" +
+          '<button class="label-toggle' + labelsActive + '" type="button" ' +
+          'aria-pressed="' + String(labeledTypes.has(type)) + '" title="Toggle ' +
+          type + ' labels">Aa</button></div>';
       }
-      const modeLabel = labelMode[0].toUpperCase() + labelMode.slice(1);
-      html += '<div class="label-control"><span>Node labels</span>' +
-        '<button id="label-mode" type="button">' + modeLabel + "</button></div>";
-      html += '<div class="hint">Select multiple types · click again to remove</div>';
+      html += '<div class="hint">Row: focus · Aa: show labels</div>';
       legend.innerHTML = html;
       for (const row of legend.querySelectorAll(".row")) {
         row.addEventListener("click", () => {
@@ -574,11 +566,16 @@
           buildLegend();
         });
       }
-      document.getElementById("label-mode").addEventListener("click", () => {
-        labelMode = LABEL_MODES[(LABEL_MODES.indexOf(labelMode) + 1) % LABEL_MODES.length];
-        updateLabelVisibility();
-        buildLegend();
-      });
+      for (const button of legend.querySelectorAll(".label-toggle")) {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const type = button.closest(".row").dataset.type;
+          if (labeledTypes.has(type)) labeledTypes.delete(type);
+          else labeledTypes.add(type);
+          updateLabelVisibility();
+          buildLegend();
+        });
+      }
     }
 
     function applyTypeFocus() {

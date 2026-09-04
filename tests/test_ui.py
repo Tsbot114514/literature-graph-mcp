@@ -174,9 +174,11 @@ def test_static_index_is_available(tmp_path: Path) -> None:
     assert 'selector: "node.labeled, node:selected, node.hovered"' in response.text
     assert 'selector: "edge:selected"' in response.text
     assert "function applyTypeFocus()" in response.text
-    assert "Select multiple types" in response.text
-    assert 'const LABEL_MODES = ["auto", "selected", "off"]' in response.text
+    assert "Row: focus · Aa: show labels" in response.text
+    assert "const labeledTypes = new Set" in response.text
+    assert 'class="label-toggle' in response.text
     assert "nodeDimensionsIncludeLabels: false" in response.text
+    assert "animate: false" in response.text
     assert "function compactLabelOf" in response.text
 
 
