@@ -74,9 +74,22 @@
       font-size: 11px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     }
-    #legend .row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+    #legend .row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 2px -5px;
+      padding: 3px 5px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: opacity 120ms ease, background 120ms ease;
+    }
+    #legend .row:hover { background: #f1f5f9; }
+    #legend .row.active { background: #e8eefc; font-weight: 700; }
+    #legend.focused .row:not(.active) { opacity: 0.42; }
     #legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     #legend .title { font-weight: 600; margin-bottom: 6px; }
+    #legend .hint { color: #888; font-size: 10px; margin-top: 6px; }
     #detail {
       position: absolute;
       top: 0;
@@ -159,6 +172,7 @@
       Concept: "#B07AA1",
       Claim: "#FF9DA7",
     };
+    let focusedType = new URLSearchParams(window.location.search).get("focus");
 
     const cy = cytoscape({
       container: document.getElementById("cy"),
@@ -191,6 +205,13 @@
           },
         },
         {
+          selector: "node.dimmed",
+          style: {
+            opacity: 0.12,
+            "text-opacity": 0.08,
+          },
+        },
+        {
           selector: "node.labeled, node:selected, node.hovered",
           style: {
             label: "data(label)",
@@ -202,6 +223,8 @@
         {
           selector: "node:selected, node.hovered",
           style: {
+            opacity: 1,
+            "text-opacity": 1,
             "border-width": 4,
             "border-color": "#222",
             "z-index": 20,
@@ -234,6 +257,21 @@
             "line-color": "#555",
             "target-arrow-color": "#555",
             "z-index": 15,
+          },
+        },
+        {
+          selector: "edge.dimmed",
+          style: {
+            opacity: 0.06,
+          },
+        },
+        {
+          selector: "edge.focused",
+          style: {
+            opacity: 0.72,
+            width: 2.4,
+            "line-color": "#a8a8a8",
+            "target-arrow-color": "#a8a8a8",
           },
         },
       ],
@@ -305,6 +343,8 @@
       cy.elements().remove();
       cy.add(elements);
       updateLabelVisibility();
+      buildLegend();
+      applyTypeFocus();
       runLayout();
     }
 
@@ -317,6 +357,7 @@
             return;
           }
           if (replace) {
+            focusedType = null;
             cy.elements().remove();
             cy.add(nodeElement(data.node.labels, data.node.properties));
           }
@@ -333,6 +374,8 @@
             }
           }
           updateLabelVisibility();
+          buildLegend();
+          applyTypeFocus();
           runLayout();
         });
     }
@@ -468,11 +511,39 @@
 
     function buildLegend() {
       const legend = document.getElementById("legend");
-      let html = '<div class="title">Node types</div>';
-      for (const [type, color] of Object.entries(TYPE_COLORS)) {
-        html += '<div class="row"><span class="dot" style="background:' + color + '"></span>' + type + "</div>";
+      const presentTypes = [...new Set(cy.nodes().map((node) => node.data("type")))].sort();
+      if (focusedType && !presentTypes.includes(focusedType)) focusedType = null;
+      legend.classList.toggle("focused", Boolean(focusedType));
+      let html = '<div class="title">Focus node type</div>';
+      for (const type of presentTypes) {
+        const color = colorOf(type);
+        const active = focusedType === type ? " active" : "";
+        html += '<div class="row' + active + '" data-type="' + type + '">' +
+          '<span class="dot" style="background:' + color + '"></span>' + type + "</div>";
       }
+      html += '<div class="hint">Click again to show all</div>';
       legend.innerHTML = html;
+      for (const row of legend.querySelectorAll(".row")) {
+        row.addEventListener("click", () => {
+          const type = row.dataset.type;
+          focusedType = focusedType === type ? null : type;
+          applyTypeFocus();
+          buildLegend();
+        });
+      }
+    }
+
+    function applyTypeFocus() {
+      for (const node of cy.nodes()) {
+        const dim = Boolean(focusedType) && node.data("type") !== focusedType;
+        node[dim ? "addClass" : "removeClass"]("dimmed");
+      }
+      for (const edge of cy.edges()) {
+        const connected = Boolean(focusedType) &&
+          (edge.source().data("type") === focusedType || edge.target().data("type") === focusedType);
+        edge[focusedType && !connected ? "addClass" : "removeClass"]("dimmed");
+        edge[connected ? "addClass" : "removeClass"]("focused");
+      }
     }
 
     document.getElementById("search-form").addEventListener("submit", (e) => {
@@ -518,8 +589,6 @@
       evt.target.removeClass("hovered");
       document.getElementById("tooltip").style.display = "none";
     });
-
-    buildLegend();
 
     fetch("/api/graph")
       .then((r) => r.json())
