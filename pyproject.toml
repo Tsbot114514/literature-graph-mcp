@@ -18,8 +18,10 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
+  "fastapi>=0.141.1",
   "mcp>=1.20,<2",
   "neo4j>=5.28,<7",
+  "uvicorn>=0.51.0",
 ]
 
 [project.scripts]

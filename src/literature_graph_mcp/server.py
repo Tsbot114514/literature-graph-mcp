@@ -219,8 +219,13 @@ def main() -> None:
     )
     try:
         repository.verify()
-        repository.ensure_schema()
-        create_server(repository, library_root).run(transport="stdio")
+        if args.ui:
+            from .ui.web import serve
+
+            serve(repository, library_root, args.host, args.port)
+        else:
+            repository.ensure_schema()
+            create_server(repository, library_root).run(transport="stdio")
     finally:
         repository.close()
 
@@ -243,6 +248,13 @@ def _parse_args() -> argparse.Namespace:
         required=os.getenv("NEO4J_PASSWORD") is None,
     )
     parser.add_argument("--neo4j-database", default=os.getenv("NEO4J_DATABASE"))
+    parser.add_argument(
+        "--ui",
+        action="store_true",
+        help="Run the browser visualization UI instead of the MCP stdio server",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="UI bind host (with --ui)")
+    parser.add_argument("--port", type=int, default=8000, help="UI port (with --ui)")
     return parser.parse_args()
 
 
