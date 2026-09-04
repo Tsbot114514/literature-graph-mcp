@@ -295,6 +295,7 @@ class LiteratureGraphRepository:
             relationship_result = session.run(
                 "MATCH (p:Paper)-[r]-(other:Entity) "
                 "WHERE p.id IN $paper_ids "
+                "AND NOT other:Author AND NOT other:Institution "
                 "WITH p, r, other "
                 "ORDER BY p.id, type(r), coalesce(other.title, other.name, other.id) "
                 "LIMIT $limit "

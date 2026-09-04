@@ -171,6 +171,8 @@ def test_static_index_is_available(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "Literature Graph UI" in response.text
+    assert 'selector: "node.labeled, node:selected, node.hovered"' in response.text
+    assert 'selector: "edge:selected"' in response.text
 
 
 def test_ui_mode_does_not_run_schema_writes(monkeypatch, tmp_path: Path) -> None:

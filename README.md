@@ -116,7 +116,7 @@ uv run literature-graph-mcp --ui --port 8000 --library "D:\Papers"
 Then open <http://127.0.0.1:8000>. The server listens on `127.0.0.1` by default. Binding `--host` to a non-loopback address exposes local research metadata to that network and should be done only on a trusted network.
 
 - Search papers, authors, topics, concepts, claims, and methods.
-- Browse a bounded recent subgraph (drag to pan, scroll to zoom). Paper labels show the year and title.
+- Browse a bounded recent subgraph (drag to pan, scroll to zoom). The overview prioritizes research relationships; Authors and Institutions appear when a node is expanded.
 - Click a node to open its detail panel (abstract, DOI, source URL, notes, chunks).
 - Click **Expand neighbors** to grow the graph from any node.
 
