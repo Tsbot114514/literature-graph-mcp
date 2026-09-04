@@ -103,6 +103,25 @@ Use the absolute paths produced by `install.ps1` when the client does not inheri
 
 The MCP process requires `NEO4J_URI`, `NEO4J_USER`, and `NEO4J_PASSWORD` in its environment.
 
+## Visualization UI
+
+A read-only browser viewer for the knowledge graph. It shares the same Neo4j database and `LiteratureGraphRepository` as the MCP server, so nodes and relationships created by agents appear here immediately.
+
+Start it against the same library and database:
+
+```powershell
+uv run literature-graph-mcp --ui --port 8000 --library "D:\Papers"
+```
+
+Then open <http://127.0.0.1:8000>. The server listens on `127.0.0.1` by default; pass `--host` to change it.
+
+- Search papers, authors, topics, concepts, claims, and methods.
+- Browse the graph (drag to pan, scroll to zoom). Paper labels show the first author and year.
+- Click a node to open its detail panel (abstract, DOI, source URL, notes, chunks).
+- Click **Expand neighbors** to grow the graph from any node.
+
+The UI is read-only for now; editing and user-authorized deletion are planned for a later stage.
+
 ## Tool Surface
 
 Read tools:
