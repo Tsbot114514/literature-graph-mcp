@@ -272,7 +272,7 @@
     }
 
     function loadNeighborhood(id, replace) {
-      fetch("/api/node/" + encodeURIComponent(id) + "/neighborhood")
+      fetch("/api/neighborhood?node_id=" + encodeURIComponent(id))
         .then((r) => r.json())
         .then((data) => {
           if (data.error) {
@@ -436,7 +436,7 @@
 
     cy.on("tap", "node", (evt) => {
       const id = evt.target.id();
-      fetch("/api/node/" + encodeURIComponent(id))
+      fetch("/api/node?node_id=" + encodeURIComponent(id))
         .then((r) => r.json())
         .then((data) => {
           if (data.error) {

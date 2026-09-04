@@ -219,12 +219,12 @@ def main() -> None:
     )
     try:
         repository.verify()
-        repository.ensure_schema()
         if args.ui:
             from .ui.web import serve
 
             serve(repository, library_root, args.host, args.port)
         else:
+            repository.ensure_schema()
             create_server(repository, library_root).run(transport="stdio")
     finally:
         repository.close()

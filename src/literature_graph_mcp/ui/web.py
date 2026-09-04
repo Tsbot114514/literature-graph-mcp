@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -12,17 +12,9 @@ from ..repository import LiteratureGraphRepository
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
-def _author_surname(name: str) -> str:
-    if not name:
-        return ""
-    return name.split()[-1]
-
-
 def _display_label(
-    repository: LiteratureGraphRepository,
     properties: dict[str, Any],
     labels: list[str],
-    cache: dict[str, str],
 ) -> str:
     node_id = properties.get("id")
     if not node_id:
@@ -31,43 +23,32 @@ def _display_label(
     if "Paper" not in labels:
         return properties.get("name") or properties.get("title") or node_id
 
-    if node_id in cache:
-        return cache[node_id]
-
+    title = properties.get("title") or node_id
     year = properties.get("year")
-    author = ""
-    try:
-        neighborhood = repository.get_neighborhood(node_id, 50)
-    except ValueError:
-        neighborhood = {"relationships": []}
-    for rel in neighborhood["relationships"]:
-        if rel["type"] == "AUTHORED_BY":
-            author = rel["node_properties"].get("name") or ""
-            break
-
-    surname = _author_surname(author)
-    label = " ".join(str(value) for value in (surname, year) if value)
-    if not label:
-        label = properties.get("title") or node_id
-    cache[node_id] = label
-    return label
+    return f"{year} · {title}" if year else title
 
 
 def _finalize(
-    repository: LiteratureGraphRepository,
     properties: dict[str, Any],
     labels: list[str],
     library_root: Path,
-    cache: dict[str, str],
 ) -> dict[str, Any]:
     result = dict(properties)
     if "Paper" in labels:
         result["absolute_local_path"] = absolute_local_path(
             library_root, result.get("local_path")
         )
-    result["display_label"] = _display_label(
-        repository, properties, labels, cache
-    )
+    result["display_label"] = _display_label(properties, labels)
+    return result
+
+
+def _summary(properties: dict[str, Any], labels: list[str]) -> dict[str, Any]:
+    result = {
+        key: properties[key]
+        for key in ("id", "title", "name", "year", "venue")
+        if properties.get(key) is not None
+    }
+    result["display_label"] = _display_label(properties, labels)
     return result
 
 
@@ -83,7 +64,7 @@ def _normalize_search_items(nodes: list[dict], papers: list[dict]) -> list[dict]
         node_id = properties.get("id")
         if node_id and node_id not in seen:
             seen.add(node_id)
-            results.append({"labels": ["Paper"], "properties": properties})
+            results.append({"labels": ["Entity", "Paper"], "properties": properties})
     return results
 
 
@@ -97,101 +78,81 @@ def create_app(repository: LiteratureGraphRepository, library_root: Path) -> Fas
         return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/api/search")
-    def search(query: str, limit: int = 20) -> dict[str, Any]:
-        cache: dict[str, str] = {}
+    def search(
+        query: str,
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> dict[str, Any]:
         nodes = repository.search_nodes(query, None, limit)
         papers = repository.search_papers(query, limit)
-        items = _normalize_search_items(nodes, papers)
+        items = _normalize_search_items(nodes, papers)[:limit]
         return {
             "results": [
                 {
                     "labels": item["labels"],
-                    "properties": _finalize(
-                        repository, item["properties"], item["labels"], library_root, cache
-                    ),
+                    "properties": _summary(item["properties"], item["labels"]),
                 }
                 for item in items
             ]
         }
 
     @app.get("/api/graph")
-    def graph() -> dict[str, Any]:
-        cache: dict[str, str] = {}
+    def graph(
+        paper_limit: int = Query(default=50, ge=1, le=200),
+        relationship_limit: int = Query(default=200, ge=1, le=1000),
+    ) -> dict[str, Any]:
         nodes: dict[str, dict[str, Any]] = {}
         edges: dict[str, dict[str, Any]] = {}
 
-        for paper in repository.list_papers():
-            paper_id = paper["id"]
-            nodes[paper_id] = {
-                "labels": ["Entity", "Paper"],
-                "properties": _finalize(
-                    repository, paper, ["Entity", "Paper"], library_root, cache
-                ),
+        snapshot = repository.get_graph_snapshot(paper_limit, relationship_limit)
+        for node in snapshot["nodes"]:
+            node_id = node["properties"]["id"]
+            nodes[node_id] = {
+                "labels": node["labels"],
+                "properties": _summary(node["properties"], node["labels"]),
             }
-            try:
-                neighborhood = repository.get_neighborhood(paper_id, 50)
-            except ValueError:
-                continue
-            for rel in neighborhood["relationships"]:
-                neighbor_id = rel["node_properties"]["id"]
-                if neighbor_id not in nodes:
-                    nodes[neighbor_id] = {
-                        "labels": rel["node_labels"],
-                        "properties": _finalize(
-                            repository,
-                            rel["node_properties"],
-                            rel["node_labels"],
-                            library_root,
-                            cache,
-                        ),
-                    }
-                source = paper_id if rel["direction"] == "outgoing" else neighbor_id
-                target = neighbor_id if rel["direction"] == "outgoing" else paper_id
-                key = f"{rel['type']}:{source}->{target}"
-                edges[key] = {"type": rel["type"], "source": source, "target": target}
+        for rel in snapshot["relationships"]:
+            neighbor_id = rel["node_properties"]["id"]
+            if neighbor_id not in nodes:
+                nodes[neighbor_id] = {
+                    "labels": rel["node_labels"],
+                    "properties": _summary(
+                        rel["node_properties"], rel["node_labels"]
+                    ),
+                }
+            key = f"{rel['type']}:{rel['source_id']}->{rel['target_id']}"
+            edges[key] = {
+                "type": rel["type"],
+                "source": rel["source_id"],
+                "target": rel["target_id"],
+            }
 
         return {"nodes": list(nodes.values()), "edges": list(edges.values())}
 
-    @app.get("/api/papers")
-    def papers() -> list[dict[str, Any]]:
-        cache: dict[str, str] = {}
-        return [
-            _finalize(repository, properties, ["Entity", "Paper"], library_root, cache)
-            for properties in repository.list_papers()
-        ]
-
-    @app.get("/api/node/{node_id}")
+    @app.get("/api/node")
     def get_node(node_id: str) -> dict[str, Any]:
         node = repository.get_node(node_id)
         if node is None:
             return JSONResponse({"error": f"Node not found: {node_id}"}, status_code=404)
-        cache: dict[str, str] = {}
         node["properties"] = _finalize(
-            repository, node["properties"], node["labels"], library_root, cache
+            node["properties"], node["labels"], library_root
         )
         return node
 
-    @app.get("/api/node/{node_id}/neighborhood")
-    def get_neighborhood(node_id: str, limit: int = 50) -> dict[str, Any]:
+    @app.get("/api/neighborhood")
+    def get_neighborhood(
+        node_id: str,
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> dict[str, Any]:
         try:
             result = repository.get_neighborhood(node_id, limit)
         except ValueError as error:
             return JSONResponse({"error": str(error)}, status_code=404)
-        cache: dict[str, str] = {}
-        result["node"]["properties"] = _finalize(
-            repository,
-            result["node"]["properties"],
-            result["node"]["labels"],
-            library_root,
-            cache,
+        result["node"]["properties"] = _summary(
+            result["node"]["properties"], result["node"]["labels"]
         )
         for rel in result["relationships"]:
-            rel["node_properties"] = _finalize(
-                repository,
-                rel["node_properties"],
-                rel["node_labels"],
-                library_root,
-                cache,
+            rel["node_properties"] = _summary(
+                rel["node_properties"], rel["node_labels"]
             )
         return result
 

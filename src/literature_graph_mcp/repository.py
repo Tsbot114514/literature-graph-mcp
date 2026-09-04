@@ -271,6 +271,45 @@ class LiteratureGraphRepository:
             )
             return [record["paper"] for record in result]
 
+    def get_graph_snapshot(
+        self,
+        paper_limit: int = 50,
+        relationship_limit: int = 200,
+    ) -> dict:
+        bounded_papers = _bounded_limit(paper_limit, maximum=200)
+        bounded_relationships = _bounded_limit(relationship_limit, maximum=1000)
+        with self._driver.session(database=self._database) as session:
+            node_result = session.run(
+                "MATCH (p:Paper) "
+                "RETURN labels(p) AS labels, "
+                "{id: p.id, title: p.title, year: p.year, venue: p.venue} AS properties "
+                "ORDER BY coalesce(p.publication_date, toString(p.year), '') DESC, "
+                "p.title LIMIT $limit",
+                limit=bounded_papers,
+            )
+            nodes = [record.data() for record in node_result]
+            paper_ids = [node["properties"]["id"] for node in nodes]
+            if not paper_ids:
+                return {"nodes": [], "relationships": []}
+
+            relationship_result = session.run(
+                "MATCH (p:Paper)-[r]-(other:Entity) "
+                "WHERE p.id IN $paper_ids "
+                "WITH p, r, other "
+                "ORDER BY p.id, type(r), coalesce(other.title, other.name, other.id) "
+                "LIMIT $limit "
+                "RETURN type(r) AS type, "
+                "CASE WHEN startNode(r) = p THEN p.id ELSE other.id END AS source_id, "
+                "CASE WHEN startNode(r) = p THEN other.id ELSE p.id END AS target_id, "
+                "labels(other) AS node_labels, "
+                "{id: other.id, title: other.title, name: other.name, "
+                "year: other.year, venue: other.venue} AS node_properties",
+                paper_ids=paper_ids,
+                limit=bounded_relationships,
+            )
+            relationships = [record.data() for record in relationship_result]
+        return {"nodes": nodes, "relationships": relationships}
+
     def get_neighborhood(self, node_id: str, limit: int = 50) -> dict:
         identifier = _required(node_id, "node_id")
         with self._driver.session(database=self._database) as session:
